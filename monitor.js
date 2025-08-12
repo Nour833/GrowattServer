@@ -60,7 +60,7 @@ function loadState() {
     const loadedState = JSON.parse(rawData);
     const mergedState = {
       config: { ...{ language: DEFAULT_LANGUAGE, costPerKwh: DEFAULT_COST_PER_KWH, currencySymbol: DEFAULT_CURRENCY_SYMBOL, cleaningIntervalWeeks: DEFAULT_CLEANING_WEEKS, tempThreshold: DEFAULT_TEMP_THRESHOLD_C }, ...loadedState.config },
-      stats: { ...{ lastReminderDate: new Date(0), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, history: {}, lastLivenessAlert: null, lastTempAlert: null }, ...loadedState.stats },
+      stats: { ...{ lastReminderDate: new Date(0), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, lastLivenessAlert: null, lastTempAlert: null }, ...loadedState.stats },
       status: { ...{ isSystemDown: false, outageStartTime: null, urgentAlertSent: false }, ...loadedState.status }
     };
     mergedState.stats.lastReminderDate = new Date(mergedState.stats.lastReminderDate);
@@ -72,7 +72,7 @@ function loadState() {
     console.log("State file not found. Creating a new one with defaults.");
     return {
       config: { language: DEFAULT_LANGUAGE, costPerKwh: DEFAULT_COST_PER_KWH, currencySymbol: DEFAULT_CURRENCY_SYMBOL, cleaningIntervalWeeks: DEFAULT_CLEANING_WEEKS, tempThreshold: DEFAULT_TEMP_THRESHOLD_C },
-      stats: { lastReminderDate: new Date(0), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, history: {}, lastLivenessAlert: null, lastTempAlert: null },
+      stats: { lastReminderDate: new Date(0), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, lastLivenessAlert: null, lastTempAlert: null },
       status: { isSystemDown: false, outageStartTime: null, urgentAlertSent: false }
     };
   }
@@ -80,24 +80,32 @@ function loadState() {
 
 function saveState() { fs.writeFileSync(path.join(__dirname, 'bot_state.json'), JSON.stringify(state, null, 2)); }
 
-async function getGrowattData(forceNew = false, date = new Date()) {
-    const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
-    if (!forceNew && isToday && apiCache.data && (Date.now() - apiCache.timestamp < 120000)) {
+async function getGrowattData(forceNew = false, startDate = new Date(), endDate = new Date(), fetchHistory = false) {
+    const isToday = format(startDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') && format(endDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+    if (!forceNew && isToday && !fetchHistory && apiCache.data && (Date.now() - apiCache.timestamp < 120000)) {
         console.log("Using cached API data.");
         return apiCache.data;
     }
-    console.log(`Fetching data from Growatt API for date: ${format(date, 'yyyy-MM-dd')}`);
+
+    const logDate = fetchHistory ? `${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')} (history)` : format(startDate, 'yyyy-MM-dd');
+    console.log(`Fetching data from Growatt API for: ${logDate}`);
+    
     const growatt = new api({});
     try {
         await growatt.login(GROWATT_USER, GROWATT_PASSWORD);
-        const allPlantData = await growatt.getAllPlantData({ historyLastStartDate: date, historyLastEndDate: date });
+        const options = { historyLastStartDate: startDate, historyLastEndDate: endDate };
+        if (fetchHistory) {
+            options.historyAll = true;
+        }
+        const allPlantData = await growatt.getAllPlantData(options);
         await growatt.logout();
-        if (isToday) {
+
+        if (isToday && !fetchHistory) {
             apiCache = { data: allPlantData, timestamp: Date.now() };
         }
         return allPlantData;
     } catch (e) {
-        console.error("Failed to get Growatt data:", e.message);
+        console.error("Failed to get Growatt data:", e); // Log the full error
         throw new Error(t('ERROR_API_CONNECTION', state.config.language));
     }
 }
@@ -123,7 +131,7 @@ const commandMap = {
   'total': { cmd: 'GET_TOTAL', lang: 'en' },
   'money': { cmd: 'GET_MONEY_TODAY', lang: 'en' }, 'argent': { cmd: 'GET_MONEY_TODAY', lang: 'fr' },
   'total money': { cmd: 'GET_MONEY_TOTAL', lang: 'en' }, 'argent total': { cmd: 'GET_MONEY_TOTAL', lang: 'fr' },
-  'cleaned': { cmd: 'SET_CLEANED', lang: 'en' }, 'nettoyé': { cmd: 'SET_CLEANED', lang: 'fr' },
+  'cleaned': { cmd: 'MARK_CLEANED', lang: 'en' }, 'nettoyé': { cmd: 'MARK_CLEANED', lang: 'fr' },
   'cleaning': { cmd: 'GET_CLEANING_STATUS', lang: 'en' }, 'nettoyage': { cmd: 'GET_CLEANING_STATUS', lang: 'fr' },
   'compare': { cmd: 'GET_COMPARISON', lang: 'en' }, 'comparer': { cmd: 'GET_COMPARISON', lang: 'fr' },
   'weather': { cmd: 'GET_WEATHER', lang: 'en' }, 'meteo': { cmd: 'GET_WEATHER', lang: 'fr' },
@@ -136,7 +144,7 @@ const commandMap = {
 };
 
 const commandActions = {
-    GET_STATUS, GET_TODAY, GET_TOTAL, GET_MONEY_TODAY, GET_MONEY_TOTAL, SET_CLEANED,
+    GET_STATUS, GET_TODAY, GET_TOTAL, GET_MONEY_TODAY, GET_MONEY_TOTAL, MARK_CLEANED,
     GET_CLEANING_STATUS, GET_COMPARISON, GET_WEATHER, GET_HISTORY, GET_HELP, SET_LANG, SET_COST,
     SET_CLEANING_WEEKS, SET_TEMP_THRESHOLD
 };
@@ -197,7 +205,7 @@ async function GET_MONEY_TOTAL(msg, lang) {
     formatMarkdown(t('MONEY_TOTAL_REPLY', lang, { symbol: state.config.currencySymbol, moneySaved }));
   } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
-function SET_CLEANED(msg, lang) {
+function MARK_CLEANED(msg, lang) {
   state.stats.lastReminderDate = new Date();
   saveState();
   formatMarkdown(t('CLEANED_REPLY', lang, { nextReminderDays: state.config.cleaningIntervalWeeks * 7 }));
@@ -212,66 +220,101 @@ function GET_CLEANING_STATUS(msg, lang) {
     formatMarkdown(t('CLEANING_STATUS_REPLY', lang, { daysLeft }));
   }
 }
+
 async function GET_HISTORY(msg, lang) {
     try {
         let arg = msg.text.split(' ')[1] || format(new Date(), 'yyyy-MM');
         if (/^\d{2}-\d{2}$/.test(arg)) {
             arg = new Date().getFullYear() + '-' + arg;
         }
-        let totalKwh = 0;
-        let results = [];
+
         if (/^\d{4}$/.test(arg)) { // Year
+            formatMarkdown("Fetching yearly report, this might take a moment...");
             const year = parseInt(arg, 10);
+            let totalKwh = 0;
+            let results = [];
             for (let i = 0; i < 12; i++) {
                 const monthDate = new Date(year, i, 1);
-                const monthTotal = await getPeriodTotal(monthDate, 'month'); // Await the result
-                if (monthTotal > 0) results.push(`*${format(monthDate, 'yyyy-MM')}:* ${monthTotal.toFixed(2)} kWh`);
+                const monthHistory = await getPeriodTotal(monthDate, 'month');
+                const monthTotal = monthHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+                if (monthTotal > 0) {
+                    results.push(`*${format(monthDate, 'yyyy-MM')}:* ${monthTotal.toFixed(2)} kWh`);
+                }
                 totalKwh += monthTotal;
             }
-            if (totalKwh > 0) results.unshift(`*${arg} Total: ${totalKwh.toFixed(2)} kWh*`);
+            if (totalKwh > 0) {
+                results.unshift(`*${arg} Total: ${totalKwh.toFixed(2)} kWh*`);
+                formatMarkdown(results.join('\n'));
+            } else {
+                formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg }));
+            }
         } else if (/^\d{4}-\d{2}$/.test(arg)) { // Month
             const monthDate = new Date(`${arg}-01T12:00:00`);
-            const daysInMonth = getDaysInMonth(monthDate);
-            for (let i = 1; i <= daysInMonth; i++) {
-                const day = new Date(`${arg}-${String(i).padStart(2, '0')}T12:00:00`);
-                const kwh = await getPeriodTotal(day, 'day'); // Await the result
-                if (kwh > 0) {
-                    results.push(`*${format(day, 'yyyy-MM-dd')}:* ${kwh.toFixed(2)} kWh`);
-                    totalKwh += kwh;
-                }
+            const monthHistory = await getPeriodTotal(monthDate, 'month');
+            let totalKwh = 0;
+            let results = [];
+            for (const record of monthHistory) {
+                results.push(`*${record.date}:* ${(record.energy || 0).toFixed(2)} kWh`);
+                totalKwh += (record.energy || 0);
             }
-            if (totalKwh > 0) results.unshift(`*${arg} Total: ${totalKwh.toFixed(2)} kWh*`);
+
+            if (totalKwh > 0) {
+                results.unshift(`*${arg} Total: ${totalKwh.toFixed(2)} kWh*`);
+                formatMarkdown(results.join('\n'));
+            } else {
+                formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg }));
+            }
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) { // Day
-            const kwh = await getPeriodTotal(new Date(arg), 'day'); // Await the result
-            if (kwh !== undefined) { results.push(t('HISTORY_REPLY', lang, { date: arg, kwh: kwh.toFixed(2) })); }
+            const dayHistory = await getPeriodTotal(new Date(arg), 'day');
+            if (dayHistory.length > 0) {
+                const kwh = dayHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+                formatMarkdown(t('HISTORY_REPLY', lang, { date: arg, kwh: kwh.toFixed(2) }));
+            } else {
+                formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg }));
+            }
         } else {
-            formatMarkdown(t('ERROR_HISTORY_FORMAT', lang)); return;
+            formatMarkdown(t('ERROR_HISTORY_FORMAT', lang));
         }
-        if (results.length > 0) { formatMarkdown(results.join('\n')); }
-        else { formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg })); }
-    } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
+    } catch (e) {
+        console.error("Error in GET_HISTORY:", e);
+        formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message }));
+    }
 }
+
 async function GET_COMPARISON(msg, lang) {
     try {
         const today = new Date();
-        const dayComparisonText = compareValues(await getPeriodTotal(today, 'day'), await getPeriodTotal(subDays(today, 1), 'day'), lang);
-        const weekComparisonText = compareValues(await getPeriodTotal(today, 'week'), await getPeriodTotal(subWeeks(today, 1), 'week'), lang);
-        const monthComparisonText = compareValues(await getPeriodTotal(today, 'month'), await getPeriodTotal(subMonths(today, 1), 'month'), lang);
+        const todayHistory = await getPeriodTotal(today, 'day');
+        const todayTotal = todayHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+
+        const yesterdayHistory = await getPeriodTotal(subDays(today, 1), 'day');
+        const yesterdayTotal = yesterdayHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+
+        const dayComparisonText = compareValues(todayTotal, yesterdayTotal, lang);
+
+        const thisWeekHistory = await getPeriodTotal(today, 'week');
+        const thisWeekTotal = thisWeekHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+
+        const lastWeekHistory = await getPeriodTotal(subWeeks(today, 1), 'week');
+        const lastWeekTotal = lastWeekHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+
+        const weekComparisonText = compareValues(thisWeekTotal, lastWeekTotal, lang);
+
+        const thisMonthHistory = await getPeriodTotal(today, 'month');
+        const thisMonthTotal = thisMonthHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+
+        const lastMonthHistory = await getPeriodTotal(subMonths(today, 1), 'month');
+        const lastMonthTotal = lastMonthHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+
+        const monthComparisonText = compareValues(thisMonthTotal, lastMonthTotal, lang);
+
         formatMarkdown(t('COMPARE_REPLY', lang, { dayComparison: dayComparisonText, weekComparison: weekComparisonText, monthComparison: monthComparisonText }));
-    } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
-}
-async function ensureHistoryForDate(date) {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    if (state.stats.history[dateStr] === undefined) {
-        console.log(`Proactively fetching missing history for ${dateStr}...`);
-        try {
-            const data = await getGrowattData(true, date);
-            const eDay = parseFloat(data[Object.keys(data)[0]].devices[Object.keys(data[Object.keys(data)[0]].devices)[0]].deviceData.eToday);
-            state.stats.history[dateStr] = eDay;
-            saveState();
-        } catch (e) { console.error(`Could not fetch history for ${dateStr}: ${e.message}`); }
+    } catch (e) {
+        console.error("Error in GET_COMPARISON:", e);
+        formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message }));
     }
 }
+
 function compareValues(current, previous, lang) {
     if (previous > 0) {
         const diff = ((current - previous) / previous) * 100;
@@ -281,25 +324,38 @@ function compareValues(current, previous, lang) {
     }
     return t('COMPARE_NOT_ENOUGH_DATA', lang);
 }
+
 async function getPeriodTotal(date, period) {
-    const history = state.stats.history;
-    let total = 0;
     const options = { weekStartsOn: 1 };
     let interval;
     if (period === 'day') {
-        const dateStr = format(date, 'yyyy-MM-dd');
-        await ensureHistoryForDate(date);
-        return history[dateStr] || 0;
+        interval = { start: date, end: date };
     } else if (period === 'week') {
         interval = { start: startOfWeek(date, options), end: endOfWeek(date, options) };
     } else { // month
         interval = { start: startOfMonth(date), end: endOfMonth(date) };
     }
-    for (const day of eachDayOfInterval(interval)) {
-        await ensureHistoryForDate(day);
-        total += history[format(day, 'yyyy-MM-dd')] || 0;
+
+    const data = await getGrowattData(true, interval.start, interval.end, true);
+    const plant = data[Object.keys(data)[0]];
+    if (!plant) {
+        throw new Error("No plant data found");
     }
-    return total;
+    const device = plant.devices[Object.keys(plant.devices)[0]];
+    if (!device) {
+        throw new Error("No device found");
+    }
+
+    // Assumption: The historical data is in a property called 'history' on the device object.
+    // This is a guess based on the library's functionality.
+    // The actual property name might be different.
+    if (!device.history || !Array.isArray(device.history)) {
+        console.error("History data is not in the expected format. The 'history' property is missing or not an array.");
+        console.error("Please inspect the structure of the 'device' object to find the correct property for historical data.");
+        return [];
+    }
+
+    return device.history;
 }
 async function GET_WEATHER(msg, lang) {
     try {
@@ -341,7 +397,7 @@ function SET_TEMP_THRESHOLD(msg, lang) {
 // =================================================================
 // --- 🕒 4. SCHEDULED TASKS ---
 // =================================================================
-cron.schedule('59 23 * * *', () => runDailyEveningChecks());
+cron.schedule('59 19 * * *', () => runDailyEveningChecks());
 cron.schedule('0 21 * * 0', () => runWeeklyReport());
 cron.schedule('0 21 1 * *', () => runMonthlyReport());
 cron.schedule('5 * * * *', () => runHourlyChecks());
@@ -356,12 +412,6 @@ async function runDailyEveningChecks() {
         const eToday = parseFloat(device.deviceData.eToday);
         const eTotal = parseFloat(plant.plantData.eTotal);
         const todayStr = format(new Date(), 'yyyy-MM-dd');
-        state.stats.history[todayStr] = eToday;
-        Object.keys(state.stats.history).forEach(dateStr => {
-            if (differenceInDays(new Date(), new Date(dateStr)) > HISTORY_DAYS_TO_KEEP) {
-                delete state.stats.history[dateStr];
-            }
-        });
         if (eToday > (state.stats.bestDay.kwh || 0)) {
             formatMarkdown(t('BEST_DAY_MESSAGE', null, { kwh: eToday, old_kwh: state.stats.bestDay.kwh || 0 }));
             state.stats.bestDay = { date: todayStr, kwh: eToday };
@@ -372,6 +422,7 @@ async function runDailyEveningChecks() {
         }
         if (differenceInDays(new Date(), new Date(state.stats.lastReminderDate)) >= state.config.cleaningIntervalWeeks * 7) {
             formatMarkdown(t('CLEANING_REMINDER', null, { weeks: state.config.cleaningIntervalWeeks }));
+            state.stats.lastReminderDate = new Date();
         }
         saveState();
     } catch (e) { console.error("Daily evening check failed:", e.message); }
