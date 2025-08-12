@@ -60,7 +60,7 @@ function loadState() {
     const loadedState = JSON.parse(rawData);
     const mergedState = {
       config: { ...{ language: DEFAULT_LANGUAGE, costPerKwh: DEFAULT_COST_PER_KWH, currencySymbol: DEFAULT_CURRENCY_SYMBOL, cleaningIntervalWeeks: DEFAULT_CLEANING_WEEKS, tempThreshold: DEFAULT_TEMP_THRESHOLD_C }, ...loadedState.config },
-      stats: { ...{ lastReminderDate: new Date(0), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, lastLivenessAlert: null, lastTempAlert: null }, ...loadedState.stats },
+      stats: { lastReminderDate: new Date(), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, lastLivenessAlert: null, lastTempAlert: null },
       status: { ...{ isSystemDown: false, outageStartTime: null, urgentAlertSent: false }, ...loadedState.status }
     };
     mergedState.stats.lastReminderDate = new Date(mergedState.stats.lastReminderDate);
@@ -72,7 +72,7 @@ function loadState() {
     console.log("State file not found. Creating a new one with defaults.");
     return {
       config: { language: DEFAULT_LANGUAGE, costPerKwh: DEFAULT_COST_PER_KWH, currencySymbol: DEFAULT_CURRENCY_SYMBOL, cleaningIntervalWeeks: DEFAULT_CLEANING_WEEKS, tempThreshold: DEFAULT_TEMP_THRESHOLD_C },
-      stats: { lastReminderDate: new Date(0), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, lastLivenessAlert: null, lastTempAlert: null },
+      stats: { lastReminderDate: new Date(), nextMilestoneKwh: MILESTONE_STEP_KWH, bestDay: { date: null, kwh: 0 }, lastLivenessAlert: null, lastTempAlert: null },
       status: { isSystemDown: false, outageStartTime: null, urgentAlertSent: false }
     };
   }
