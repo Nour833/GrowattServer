@@ -98,6 +98,7 @@ async function getGrowattData(forceNew = false, startDate = new Date(), endDate 
             options.totalData = true;
         }
         const allPlantData = await growatt.getAllPlantData(options);
+	console.log('--- GROWATT RESPONSE ---', JSON.stringify(allPlantData, null, 2));
         await growatt.logout();
 
         if (isToday && !fetchHistory) {
