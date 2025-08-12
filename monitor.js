@@ -1,4 +1,4 @@
-"use strict";
+'use strict';
 // --- Core Libraries ---
 const TelegramBot = require('node-telegram-bot-api');
 const api = require('growatt');
@@ -95,7 +95,7 @@ async function getGrowattData(forceNew = false, startDate = new Date(), endDate 
         await growatt.login(GROWATT_USER, GROWATT_PASSWORD);
         const options = { historyLastStartDate: startDate, historyLastEndDate: endDate };
         if (fetchHistory) {
-            options.historyAll = true;
+            options.totalData = true;
         }
         const allPlantData = await growatt.getAllPlantData(options);
         await growatt.logout();
@@ -158,7 +158,7 @@ bot.on('message', async (msg) => {
     if (commandInfo && commandActions[commandInfo.cmd]) {
         console.log(`Command received: "${commandInfo.cmd}" from ${msg.from.first_name} in lang: ${commandInfo.lang}`);
         if (commandInfo.cmd.startsWith('SET_')) {
-            if (await isAdmin(msg.from.id)) { commandActions[commandInfo.cmd](msg, commandInfo.lang); }
+            if (await isAdmin(msg.from.id)) { commandActions[commandInfo.cmd](msg, commandInfo.lang); } 
             else { formatMarkdown(t('ERROR_NOT_ADMIN', commandInfo.lang)); }
         } else {
             commandActions[commandInfo.cmd](msg, commandInfo.lang);
@@ -235,8 +235,7 @@ async function GET_HISTORY(msg, lang) {
             let results = [];
             for (let i = 0; i < 12; i++) {
                 const monthDate = new Date(year, i, 1);
-                const monthHistory = await getPeriodTotal(monthDate, 'month');
-                const monthTotal = monthHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+                const monthTotal = await getPeriodTotal(monthDate, 'month');
                 if (monthTotal > 0) {
                     results.push(`*${format(monthDate, 'yyyy-MM')}:* ${monthTotal.toFixed(2)} kWh`);
                 }
@@ -250,24 +249,15 @@ async function GET_HISTORY(msg, lang) {
             }
         } else if (/^\d{4}-\d{2}$/.test(arg)) { // Month
             const monthDate = new Date(`${arg}-01T12:00:00`);
-            const monthHistory = await getPeriodTotal(monthDate, 'month');
-            let totalKwh = 0;
-            let results = [];
-            for (const record of monthHistory) {
-                results.push(`*${record.date}:* ${(record.energy || 0).toFixed(2)} kWh`);
-                totalKwh += (record.energy || 0);
-            }
-
-            if (totalKwh > 0) {
-                results.unshift(`*${arg} Total: ${totalKwh.toFixed(2)} kWh*`);
-                formatMarkdown(results.join('\n'));
+            const monthTotal = await getPeriodTotal(monthDate, 'month');
+            if (monthTotal > 0) {
+                formatMarkdown(t('HISTORY_REPLY', lang, { date: arg, kwh: monthTotal.toFixed(2) }));
             } else {
                 formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg }));
             }
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(arg)) { // Day
-            const dayHistory = await getPeriodTotal(new Date(arg), 'day');
-            if (dayHistory.length > 0) {
-                const kwh = dayHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
+            const kwh = await getPeriodTotal(new Date(arg), 'day');
+            if (kwh > 0) {
                 formatMarkdown(t('HISTORY_REPLY', lang, { date: arg, kwh: kwh.toFixed(2) }));
             } else {
                 formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg }));
@@ -284,30 +274,9 @@ async function GET_HISTORY(msg, lang) {
 async function GET_COMPARISON(msg, lang) {
     try {
         const today = new Date();
-        const todayHistory = await getPeriodTotal(today, 'day');
-        const todayTotal = todayHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
-
-        const yesterdayHistory = await getPeriodTotal(subDays(today, 1), 'day');
-        const yesterdayTotal = yesterdayHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
-
-        const dayComparisonText = compareValues(todayTotal, yesterdayTotal, lang);
-
-        const thisWeekHistory = await getPeriodTotal(today, 'week');
-        const thisWeekTotal = thisWeekHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
-
-        const lastWeekHistory = await getPeriodTotal(subWeeks(today, 1), 'week');
-        const lastWeekTotal = lastWeekHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
-
-        const weekComparisonText = compareValues(thisWeekTotal, lastWeekTotal, lang);
-
-        const thisMonthHistory = await getPeriodTotal(today, 'month');
-        const thisMonthTotal = thisMonthHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
-
-        const lastMonthHistory = await getPeriodTotal(subMonths(today, 1), 'month');
-        const lastMonthTotal = lastMonthHistory.reduce((sum, record) => sum + (record.energy || 0), 0);
-
-        const monthComparisonText = compareValues(thisMonthTotal, lastMonthTotal, lang);
-
+        const dayComparisonText = compareValues(await getPeriodTotal(today, 'day'), await getPeriodTotal(subDays(today, 1), 'day'), lang);
+        const weekComparisonText = compareValues(await getPeriodTotal(today, 'week'), await getPeriodTotal(subWeeks(today, 1), 'week'), lang);
+        const monthComparisonText = compareValues(await getPeriodTotal(today, 'month'), await getPeriodTotal(subMonths(today, 1), 'month'), lang);
         formatMarkdown(t('COMPARE_REPLY', lang, { dayComparison: dayComparisonText, weekComparison: weekComparisonText, monthComparison: monthComparisonText }));
     } catch (e) {
         console.error("Error in GET_COMPARISON:", e);
@@ -341,22 +310,12 @@ async function getPeriodTotal(date, period) {
     if (!plant) {
         throw new Error("No plant data found");
     }
-    const device = plant.devices[Object.keys(plant.devices)[0]];
-    if (!device) {
-        throw new Error("No device found");
-    }
 
-    // Assumption: The historical data is in a property called 'history' on the device object.
-    // This is a guess based on the library's functionality.
-    // The actual property name might be different.
-    if (!device.history || !Array.isArray(device.history)) {
-        console.error("History data is not in the expected format. The 'history' property is missing or not an array.");
-        console.error("Please inspect the structure of the 'device' object to find the correct property for historical data.");
-        return [];
-    }
-
-    return device.history;
+    // Assumption: The total energy for the period is in plant.plantData.eTotal.
+    // This is based on the 'totalData' option in the documentation.
+    return plant.plantData.eTotal || 0;
 }
+
 async function GET_WEATHER(msg, lang) {
     try {
         const data = await getGrowattData();
@@ -365,6 +324,7 @@ async function GET_WEATHER(msg, lang) {
         formatMarkdown(t('WEATHER_REPLY', lang, { icon: iconMap[weatherData.cond_code] || "🌡️", condition: weatherData.cond_txt, temp: weatherData.tmp, feelsLike: weatherData.fl, humidity: weatherData.hum }));
     } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
+
 function GET_HELP(msg, lang) {
     const helpText = [
         t('HELP_HEADER', lang), t('HELP_INTRO', lang), "\n*English | French*", "-----------------------------",
@@ -373,24 +333,28 @@ function GET_HELP(msg, lang) {
     ].join('\n');
     formatMarkdown(helpText, lang);
 }
+
 function SET_LANG(msg, lang) {
     const newLang = msg.text.split(' ')[1];
-    if (newLang === 'en' || newLang === 'fr') { state.config.language = newLang; saveState(); formatMarkdown(t('SET_LANG_SUCCESS', newLang)); }
+    if (newLang === 'en' || newLang === 'fr') { state.config.language = newLang; saveState(); formatMarkdown(t('SET_LANG_SUCCESS', newLang)); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
+
 function SET_COST(msg, lang) {
     const cost = parseFloat(msg.text.split(' ')[1]);
-    if (!isNaN(cost) && cost > 0) { state.config.costPerKwh = cost; saveState(); formatMarkdown(t('SET_COST_SUCCESS', lang, { cost: cost.toFixed(3) })); }
+    if (!isNaN(cost) && cost > 0) { state.config.costPerKwh = cost; saveState(); formatMarkdown(t('SET_COST_SUCCESS', lang, { cost: cost.toFixed(3) })); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
+
 function SET_CLEANING_WEEKS(msg, lang) {
     const weeks = parseInt(msg.text.split(' ')[1], 10);
-    if (!isNaN(weeks) && weeks > 0) { state.config.cleaningIntervalWeeks = weeks; saveState(); formatMarkdown(t('SET_CLEANING_WEEKS_SUCCESS', lang, { weeks })); }
+    if (!isNaN(weeks) && weeks > 0) { state.config.cleaningIntervalWeeks = weeks; saveState(); formatMarkdown(t('SET_CLEANING_WEEKS_SUCCESS', lang, { weeks })); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
+
 function SET_TEMP_THRESHOLD(msg, lang) {
     const temp = parseInt(msg.text.split(' ')[1], 10);
-    if (!isNaN(temp) && temp > 30) { state.config.tempThreshold = temp; saveState(); formatMarkdown(t('SET_TEMP_THRESHOLD_SUCCESS', lang, { temp })); }
+    if (!isNaN(temp) && temp > 30) { state.config.tempThreshold = temp; saveState(); formatMarkdown(t('SET_TEMP_THRESHOLD_SUCCESS', lang, { temp })); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
