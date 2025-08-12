@@ -45,5 +45,7 @@
   "SET_LANG_SUCCESS": "Default language for *automatic alerts* has been set to English.",
   "SET_COST_SUCCESS": "Cost per kWh has been updated to {cost}.",
   "SET_CLEANING_WEEKS_SUCCESS": "Cleaning reminder interval set to {weeks} weeks.",
-  "SET_TEMP_THRESHOLD_SUCCESS": "High temperature warning threshold set to {temp}°C."
+  "SET_TEMP_THRESHOLD_SUCCESS": "High temperature warning threshold set to {temp}°C.",
+  "FETCHING_HISTORY": "Fetching history for {period}, this might take a while...",
+  "FETCHING_COMPARISON": "Fetching data for comparison, this might take a while..."
 }

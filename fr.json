@@ -45,5 +45,7 @@
   "SET_LANG_SUCCESS": "La langue par défaut pour les *alertes automatiques* a été définie sur Français.",
   "SET_COST_SUCCESS": "Le coût par kWh a été mis à jour à {cost}.",
   "SET_CLEANING_WEEKS_SUCCESS": "L'intervalle de rappel de nettoyage est réglé sur {weeks} semaines.",
-  "SET_TEMP_THRESHOLD_SUCCESS": "Le seuil d'alerte de température élevée est réglé sur {temp}°C."
+  "SET_TEMP_THRESHOLD_SUCCESS": "Le seuil d'alerte de température élevée est réglé sur {temp}°C.",
+  "FETCHING_HISTORY": "Récupération de l'historique pour {period}, cela peut prendre un certain temps...",
+  "FETCHING_COMPARISON": "Récupération des données pour la comparaison, cela peut prendre un certain temps..."
 }

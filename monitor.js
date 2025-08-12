@@ -219,7 +219,7 @@ async function GET_HISTORY(msg, lang) {
         }
 
         if (/^\d{4}$/.test(arg)) { // Year
-            formatMarkdown("Fetching yearly report, this might take a moment...");
+            formatMarkdown(t('FETCHING_HISTORY', lang, { period: arg }));
             const year = parseInt(arg, 10);
             let totalKwh = 0;
             let results = [];
@@ -238,6 +238,7 @@ async function GET_HISTORY(msg, lang) {
                 formatMarkdown(t('HISTORY_NOT_FOUND', lang, { date: arg }));
             }
         } else if (/^\d{4}-\d{2}$/.test(arg)) { // Month
+            formatMarkdown(t('FETCHING_HISTORY', lang, { period: arg }));
             const monthDate = new Date(`${arg}-01T12:00:00`);
             const monthTotal = await getPeriodTotal(monthDate, 'month');
             if (monthTotal > 0) {
@@ -263,6 +264,7 @@ async function GET_HISTORY(msg, lang) {
 
 async function GET_COMPARISON(msg, lang) {
     try {
+        formatMarkdown(t('FETCHING_COMPARISON', lang));
         const today = new Date();
         const dayComparisonText = compareValues(await getPeriodTotal(today, 'day'), await getPeriodTotal(subDays(today, 1), 'day'), lang);
         const weekComparisonText = compareValues(await getPeriodTotal(today, 'week'), await getPeriodTotal(subWeeks(today, 1), 'week'), lang);
