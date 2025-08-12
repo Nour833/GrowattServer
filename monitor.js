@@ -80,33 +80,22 @@ function loadState() {
 
 function saveState() { fs.writeFileSync(path.join(__dirname, 'bot_state.json'), JSON.stringify(state, null, 2)); }
 
-async function getGrowattData(forceNew = false, startDate = new Date(), endDate = new Date(), fetchHistory = false) {
-    const isToday = format(startDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') && format(endDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
-    if (!forceNew && isToday && !fetchHistory && apiCache.data && (Date.now() - apiCache.timestamp < 120000)) {
-        console.log("Using cached API data.");
+async function getGrowattData(forceNew = false, date = new Date()) {
+    const isToday = format(date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
+    if (!forceNew && isToday && apiCache.data && (Date.now() - apiCache.timestamp < 120000)) {
         return apiCache.data;
     }
-
-    const logDate = fetchHistory ? `${format(startDate, 'yyyy-MM-dd')} to ${format(endDate, 'yyyy-MM-dd')} (history)` : format(startDate, 'yyyy-MM-dd');
-    console.log(`Fetching data from Growatt API for: ${logDate}`);
-    
     const growatt = new api({});
     try {
         await growatt.login(GROWATT_USER, GROWATT_PASSWORD);
-        const options = { historyLastStartDate: startDate, historyLastEndDate: endDate };
-        if (fetchHistory) {
-            options.totalData = true;
-        }
-        const allPlantData = await growatt.getAllPlantData(options);
-	console.log('--- GROWATT RESPONSE ---', JSON.stringify(allPlantData, null, 2));
+        const allPlantData = await growatt.getAllPlantData({ historyLastStartDate: date, historyLastEndDate: date });
         await growatt.logout();
-
-        if (isToday && !fetchHistory) {
+        if (isToday) {
             apiCache = { data: allPlantData, timestamp: Date.now() };
         }
         return allPlantData;
     } catch (e) {
-        console.error("Failed to get Growatt data:", e); // Log the full error
+        console.error("Failed to get Growatt data:", e);
         throw new Error(t('ERROR_API_CONNECTION', state.config.language));
     }
 }
@@ -159,7 +148,7 @@ bot.on('message', async (msg) => {
     if (commandInfo && commandActions[commandInfo.cmd]) {
         console.log(`Command received: "${commandInfo.cmd}" from ${msg.from.first_name} in lang: ${commandInfo.lang}`);
         if (commandInfo.cmd.startsWith('SET_')) {
-            if (await isAdmin(msg.from.id)) { commandActions[commandInfo.cmd](msg, commandInfo.lang); } 
+            if (await isAdmin(msg.from.id)) { commandActions[commandInfo.cmd](msg, commandInfo.lang); }
             else { formatMarkdown(t('ERROR_NOT_ADMIN', commandInfo.lang)); }
         } else {
             commandActions[commandInfo.cmd](msg, commandInfo.lang);
@@ -296,25 +285,29 @@ function compareValues(current, previous, lang) {
 }
 
 async function getPeriodTotal(date, period) {
+    if (period === 'day') {
+        const data = await getGrowattData(true, date);
+        const plant = data[Object.keys(data)[0]];
+        if (!plant) return 0;
+        const device = plant.devices[Object.keys(plant.devices)[0]];
+        if (!device || !device.historyLast) return 0;
+        return parseFloat(device.historyLast.eacToday || 0);
+    }
+
     const options = { weekStartsOn: 1 };
     let interval;
-    if (period === 'day') {
-        interval = { start: date, end: date };
-    } else if (period === 'week') {
+    if (period === 'week') {
         interval = { start: startOfWeek(date, options), end: endOfWeek(date, options) };
     } else { // month
         interval = { start: startOfMonth(date), end: endOfMonth(date) };
     }
 
-    const data = await getGrowattData(true, interval.start, interval.end, true);
-    const plant = data[Object.keys(data)[0]];
-    if (!plant) {
-        throw new Error("No plant data found");
+    let total = 0;
+    for (const day of eachDayOfInterval(interval)) {
+        const dayTotal = await getPeriodTotal(day, 'day');
+        total += dayTotal;
     }
-
-    // Assumption: The total energy for the period is in plant.plantData.eTotal.
-    // This is based on the 'totalData' option in the documentation.
-    return plant.plantData.eTotal || 0;
+    return total;
 }
 
 async function GET_WEATHER(msg, lang) {
@@ -337,25 +330,25 @@ function GET_HELP(msg, lang) {
 
 function SET_LANG(msg, lang) {
     const newLang = msg.text.split(' ')[1];
-    if (newLang === 'en' || newLang === 'fr') { state.config.language = newLang; saveState(); formatMarkdown(t('SET_LANG_SUCCESS', newLang)); } 
+    if (newLang === 'en' || newLang === 'fr') { state.config.language = newLang; saveState(); formatMarkdown(t('SET_LANG_SUCCESS', newLang)); }
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
 function SET_COST(msg, lang) {
     const cost = parseFloat(msg.text.split(' ')[1]);
-    if (!isNaN(cost) && cost > 0) { state.config.costPerKwh = cost; saveState(); formatMarkdown(t('SET_COST_SUCCESS', lang, { cost: cost.toFixed(3) })); } 
+    if (!isNaN(cost) && cost > 0) { state.config.costPerKwh = cost; saveState(); formatMarkdown(t('SET_COST_SUCCESS', lang, { cost: cost.toFixed(3) })); }
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
 function SET_CLEANING_WEEKS(msg, lang) {
     const weeks = parseInt(msg.text.split(' ')[1], 10);
-    if (!isNaN(weeks) && weeks > 0) { state.config.cleaningIntervalWeeks = weeks; saveState(); formatMarkdown(t('SET_CLEANING_WEEKS_SUCCESS', lang, { weeks })); } 
+    if (!isNaN(weeks) && weeks > 0) { state.config.cleaningIntervalWeeks = weeks; saveState(); formatMarkdown(t('SET_CLEANING_WEEKS_SUCCESS', lang, { weeks })); }
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
 function SET_TEMP_THRESHOLD(msg, lang) {
     const temp = parseInt(msg.text.split(' ')[1], 10);
-    if (!isNaN(temp) && temp > 30) { state.config.tempThreshold = temp; saveState(); formatMarkdown(t('SET_TEMP_THRESHOLD_SUCCESS', lang, { temp })); } 
+    if (!isNaN(temp) && temp > 30) { state.config.tempThreshold = temp; saveState(); formatMarkdown(t('SET_TEMP_THRESHOLD_SUCCESS', lang, { temp })); }
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
