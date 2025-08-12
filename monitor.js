@@ -148,7 +148,7 @@ bot.on('message', async (msg) => {
     if (commandInfo && commandActions[commandInfo.cmd]) {
         console.log(`Command received: "${commandInfo.cmd}" from ${msg.from.first_name} in lang: ${commandInfo.lang}`);
         if (commandInfo.cmd.startsWith('SET_')) {
-            if (await isAdmin(msg.from.id)) { commandActions[commandInfo.cmd](msg, commandInfo.lang); }
+            if (await isAdmin(msg.from.id)) { commandActions[commandInfo.cmd](msg, commandInfo.lang); } 
             else { formatMarkdown(t('ERROR_NOT_ADMIN', commandInfo.lang)); }
         } else {
             commandActions[commandInfo.cmd](msg, commandInfo.lang);
@@ -160,38 +160,48 @@ bot.on('message', async (msg) => {
 async function GET_STATUS(msg, lang) {
   try {
     const data = await getGrowattData();
-    const plant = data[Object.keys(data)[0]];
-    const device = plant.devices[Object.keys(plant.devices)[0]];
+    const plant = data && data[Object.keys(data)[0]];
+    if (!plant) return formatMarkdown(t('ERROR_NO_PLANT_DATA', lang));
+    const device = plant.devices && plant.devices[Object.keys(plant.devices)[0]];
+    if (!device) return formatMarkdown(t('ERROR_NO_DEVICE_DATA', lang));
     formatMarkdown(t('STATUS_REPLY', lang, { pac: device.historyLast.pac, vacr: device.historyLast.vacr, temperature: device.historyLast.temperature, eToday: device.deviceData.eToday }));
   } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
 async function GET_TODAY(msg, lang) {
   try {
     const data = await getGrowattData();
-    const eToday = data[Object.keys(data)[0]].devices[Object.keys(data[Object.keys(data)[0]].devices)[0]].deviceData.eToday;
-    formatMarkdown(t('TODAY_REPLY', lang, { eToday }));
+    const plant = data && data[Object.keys(data)[0]];
+    if (!plant) return formatMarkdown(t('ERROR_NO_PLANT_DATA', lang));
+    const device = plant.devices && plant.devices[Object.keys(plant.devices)[0]];
+    if (!device) return formatMarkdown(t('ERROR_NO_DEVICE_DATA', lang));
+    formatMarkdown(t('TODAY_REPLY', lang, { eToday: device.deviceData.eToday }));
   } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
 async function GET_TOTAL(msg, lang) {
   try {
     const data = await getGrowattData();
-    const eTotal = data[Object.keys(data)[0]].plantData.eTotal;
-    formatMarkdown(t('TOTAL_REPLY', lang, { eTotal }));
+    const plant = data && data[Object.keys(data)[0]];
+    if (!plant) return formatMarkdown(t('ERROR_NO_PLANT_DATA', lang));
+    formatMarkdown(t('TOTAL_REPLY', lang, { eTotal: plant.plantData.eTotal }));
   } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
 async function GET_MONEY_TODAY(msg, lang) {
   try {
     const data = await getGrowattData();
-    const eToday = parseFloat(data[Object.keys(data)[0]].devices[Object.keys(data[Object.keys(data)[0]].devices)[0]].deviceData.eToday);
-    const moneySaved = (eToday * state.config.costPerKwh).toFixed(2);
+    const plant = data && data[Object.keys(data)[0]];
+    if (!plant) return formatMarkdown(t('ERROR_NO_PLANT_DATA', lang));
+    const device = plant.devices && plant.devices[Object.keys(plant.devices)[0]];
+    if (!device) return formatMarkdown(t('ERROR_NO_DEVICE_DATA', lang));
+    const moneySaved = (parseFloat(device.deviceData.eToday) * state.config.costPerKwh).toFixed(2);
     formatMarkdown(t('MONEY_TODAY_REPLY', lang, { symbol: state.config.currencySymbol, moneySaved }));
   } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
 async function GET_MONEY_TOTAL(msg, lang) {
   try {
     const data = await getGrowattData();
-    const eTotal = parseFloat(data[Object.keys(data)[0]].plantData.eTotal);
-    const moneySaved = (eTotal * state.config.costPerKwh).toFixed(2);
+    const plant = data && data[Object.keys(data)[0]];
+    if (!plant) return formatMarkdown(t('ERROR_NO_PLANT_DATA', lang));
+    const moneySaved = (parseFloat(plant.plantData.eTotal) * state.config.costPerKwh).toFixed(2);
     formatMarkdown(t('MONEY_TOTAL_REPLY', lang, { symbol: state.config.currencySymbol, moneySaved }));
   } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
 }
@@ -289,9 +299,9 @@ function compareValues(current, previous, lang) {
 async function getPeriodTotal(date, period) {
     if (period === 'day') {
         const data = await getGrowattData(true, date);
-        const plant = data[Object.keys(data)[0]];
+        const plant = data && data[Object.keys(data)[0]];
         if (!plant) return 0;
-        const device = plant.devices[Object.keys(plant.devices)[0]];
+        const device = plant.devices && plant.devices[Object.keys(plant.devices)[0]];
         if (!device || !device.historyLast) return 0;
         return parseFloat(device.historyLast.eacToday || 0);
     }
@@ -315,7 +325,9 @@ async function getPeriodTotal(date, period) {
 async function GET_WEATHER(msg, lang) {
     try {
         const data = await getGrowattData();
-        const weatherData = data[Object.keys(data)[0]].weather.data.HeWeather6[0].now;
+        const plant = data && data[Object.keys(data)[0]];
+        if (!plant) return formatMarkdown(t('ERROR_NO_PLANT_DATA', lang));
+        const weatherData = plant.weather.data.HeWeather6[0].now;
         const iconMap = { "100": "☀️", "101": "☁️", "102": "☁️", "103": "🌤️", "104": "☁️", "300": "🌧️", "305": "🌧️", "306": "🌧️", "307": "🌧️", "400": "❄️" };
         formatMarkdown(t('WEATHER_REPLY', lang, { icon: iconMap[weatherData.cond_code] || "🌡️", condition: weatherData.cond_txt, temp: weatherData.tmp, feelsLike: weatherData.fl, humidity: weatherData.hum }));
     } catch (e) { formatMarkdown(t('ERROR_GENERIC', lang, { errorMessage: e.message })); }
@@ -332,25 +344,25 @@ function GET_HELP(msg, lang) {
 
 function SET_LANG(msg, lang) {
     const newLang = msg.text.split(' ')[1];
-    if (newLang === 'en' || newLang === 'fr') { state.config.language = newLang; saveState(); formatMarkdown(t('SET_LANG_SUCCESS', newLang)); }
+    if (newLang === 'en' || newLang === 'fr') { state.config.language = newLang; saveState(); formatMarkdown(t('SET_LANG_SUCCESS', newLang)); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
 function SET_COST(msg, lang) {
     const cost = parseFloat(msg.text.split(' ')[1]);
-    if (!isNaN(cost) && cost > 0) { state.config.costPerKwh = cost; saveState(); formatMarkdown(t('SET_COST_SUCCESS', lang, { cost: cost.toFixed(3) })); }
+    if (!isNaN(cost) && cost > 0) { state.config.costPerKwh = cost; saveState(); formatMarkdown(t('SET_COST_SUCCESS', lang, { cost: cost.toFixed(3) })); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
 function SET_CLEANING_WEEKS(msg, lang) {
     const weeks = parseInt(msg.text.split(' ')[1], 10);
-    if (!isNaN(weeks) && weeks > 0) { state.config.cleaningIntervalWeeks = weeks; saveState(); formatMarkdown(t('SET_CLEANING_WEEKS_SUCCESS', lang, { weeks })); }
+    if (!isNaN(weeks) && weeks > 0) { state.config.cleaningIntervalWeeks = weeks; saveState(); formatMarkdown(t('SET_CLEANING_WEEKS_SUCCESS', lang, { weeks })); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
 function SET_TEMP_THRESHOLD(msg, lang) {
     const temp = parseInt(msg.text.split(' ')[1], 10);
-    if (!isNaN(temp) && temp > 30) { state.config.tempThreshold = temp; saveState(); formatMarkdown(t('SET_TEMP_THRESHOLD_SUCCESS', lang, { temp })); }
+    if (!isNaN(temp) && temp > 30) { state.config.tempThreshold = temp; saveState(); formatMarkdown(t('SET_TEMP_THRESHOLD_SUCCESS', lang, { temp })); } 
     else { formatMarkdown(t('ERROR_INVALID_COMMAND', lang)); }
 }
 
@@ -361,14 +373,16 @@ cron.schedule('59 19 * * *', () => runDailyEveningChecks());
 cron.schedule('0 21 * * 0', () => runWeeklyReport());
 cron.schedule('0 21 1 * *', () => runMonthlyReport());
 cron.schedule('5 * * * *', () => runHourlyChecks());
-cron.schedule('* * * * *', () => checkUrgentConditions());
+cron.schedule('*/15 * * * *', () => checkUrgentConditions());
 
 async function runDailyEveningChecks() {
     console.log("Running daily evening checks...");
     try {
         const data = await getGrowattData(true);
-        const plant = data[Object.keys(data)[0]];
-        const device = plant.devices[Object.keys(plant.devices)[0]];
+        const plant = data && data[Object.keys(data)[0]];
+        if (!plant) return;
+        const device = plant.devices && plant.devices[Object.keys(plant.devices)[0]];
+        if (!device) return;
         const eToday = parseFloat(device.deviceData.eToday);
         const eTotal = parseFloat(plant.plantData.eTotal);
         const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -433,8 +447,10 @@ async function runHourlyChecks() {
     console.log("Inside active window. Performing all daytime checks...");
     try {
         const data = await getGrowattData(true);
-        const plant = data[Object.keys(data)[0]];
-        const device = plant.devices[Object.keys(plant.devices)[0]];
+        const plant = data && data[Object.keys(data)[0]];
+        if (!plant) return;
+        const device = plant.devices && plant.devices[Object.keys(plant.devices)[0]];
+        if (!device) return;
         const pac = device.historyLast.pac;
         const temp = device.historyLast.temperature;
         const lastUpdate = new Date(device.deviceData.lastUpdateTime);

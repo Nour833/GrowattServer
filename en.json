@@ -47,5 +47,7 @@
   "SET_CLEANING_WEEKS_SUCCESS": "Cleaning reminder interval set to {weeks} weeks.",
   "SET_TEMP_THRESHOLD_SUCCESS": "High temperature warning threshold set to {temp}°C.",
   "FETCHING_HISTORY": "Fetching history for {period}, this might take a while...",
-  "FETCHING_COMPARISON": "Fetching data for comparison, this might take a while..."
+  "FETCHING_COMPARISON": "Fetching data for comparison, this might take a while...",
+  "ERROR_NO_PLANT_DATA": "No plant data found in the API response.",
+  "ERROR_NO_DEVICE_DATA": "No device data found for the plant."
 }

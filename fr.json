@@ -47,5 +47,7 @@
   "SET_CLEANING_WEEKS_SUCCESS": "L'intervalle de rappel de nettoyage est réglé sur {weeks} semaines.",
   "SET_TEMP_THRESHOLD_SUCCESS": "Le seuil d'alerte de température élevée est réglé sur {temp}°C.",
   "FETCHING_HISTORY": "Récupération de l'historique pour {period}, cela peut prendre un certain temps...",
-  "FETCHING_COMPARISON": "Récupération des données pour la comparaison, cela peut prendre un certain temps..."
+  "FETCHING_COMPARISON": "Récupération des données pour la comparaison, cela peut prendre un certain temps...",
+  "ERROR_NO_PLANT_DATA": "Aucune donnée de centrale trouvée dans la réponse de l'API.",
+  "ERROR_NO_DEVICE_DATA": "Aucune donnée d'appareil trouvée pour la centrale."
 }
